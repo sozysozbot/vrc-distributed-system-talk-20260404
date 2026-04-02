@@ -36,14 +36,6 @@ The intended message is roughly this:
 5. Even so, this line of thinking matters, because software engineering is inseparable from responsibility and explainability.
    If outcomes are not specified in a form people can rely on, nontrivial downstream reasoning becomes impossible.
 
-<!-- We have absolutely no time this!
-
-6. In an era of AI-generated software, this may become even more relevant. 
-   The point is not that responsibility disappears; rather, we may increasingly need
-   the ability to read and judge what has actually been verified, and what has not.
-
--->
-
 This draft is therefore trying to balance:
 - accessibility for a non-specialist technical audience,
 - one concrete technical example, namely CTL model checking,
@@ -57,9 +49,6 @@ This is partly a technical talk, but not only that. There are a few different th
 
 - If you are mainly interested in day-to-day software engineering, I want you to pay attention to the parts where I talk about **specifications**, **responsibility**, and what it means to justify the behavior of software.
 - If you are interested in the more technical side, then the part on **CTL** and **model checking** is probably where you should lean in. As new technical tools, you will learn about Kripke structures (a directed graph together with a valuation) and CTL formulas.
-<!-- no time for this:
-- If you are interested in the bigger picture, especially in relation to AI and future tooling, then I want you to listen for the question: **how should we think about software correctness when code generation becomes cheap?**
--->
 
 Also, this talk is not trying to tell you that one particular tool is the answer. I am not here to say “everybody should go use Lean”, or “everybody should specify with TLA+”, or “CTL model checking is the right way to verify software”.
 
@@ -169,42 +158,6 @@ With this view, a map is *just a piece of data*.
 Therefore, we can put this piece of data into a computer, and then we can write algorithms that operate on it.
 Route planning on Google Maps is a prominent example of that.
 
-<!-- ↓ This explanation is probably confusing, so let's not do this
-
-But there is a second point, and to me it is even more important: A model does not merely simplify reality. It also **disconnects** us from reality.
-
-We are now in a mathematical world, and we are just relating, by our discretion, a mathematical object to the real system.
-
-Side note: by *mathematical*, you might think of "things where you need mathematical expressions to write them down", but
-that is *not* what I intend to say! Conveying this idea in its entirety would require a whole additional talk,
-but the point is that things we deal with are *just data* (in principle), and we are trying to represent some physically existing things
-with that data. (TODO: I don't want the word to sound authoritarian! The important aspects are that these mathematical objects are
-precise, objective (in the sense that *you can't possibly disagree about what the object is* (as long as definitions are communicated))
-and that we can argue *absolutely* (non-refutably) about them. We are deboning every "real" aspect of the system in question, often involving radical simplifications, and what we are then left with is what we are calling as a "mathematical model". It is one slice of the "most boring" and "least difficult" parts of the system, and our ability to reason about them in precise ways comes from this boringness.)
-
-This matters especially whenever the system has a strong physical aspect:
-- elevator safety systems,
-- traffic signals,
-- robotics,
-- embedded systems,
-- timing-sensitive hardware interactions.
-
-In such settings, careless modeling can be disastrous.
-
-So one of the most important lessons I want to communicate is:
-
-> Formal verification is always verification of a model, which brings along loads of assumptions about the reality.
-
-One must not confuse:
-- the *real* requirement, which may only be present in the minds of stakeholders,
-- the formal mathematical property, which is *an encoding* of requirements onto a formal language,
-- the real implementation,
-- and the mathematical model of that implementation.
-
-These are closely related, but they are all different things.
-
--->
-
 ## OK, so What do Formal Methods do?
 
 At this point, I can say what formal methods are:
@@ -233,9 +186,6 @@ To name a few examples of the formal methods:
 
 These are all different attempts at making assertions *formal enough* so that they become machine-checkable.
 
-In the context of software engineering and systems design,
-I would say that the ultimate goal is to *reason* about software and systems.
-
 -->
 
 ## One concrete path: Kripke structures + Temporal Logic
@@ -263,11 +213,7 @@ To name a few other temporal logics, there are:
 - LTL (Linear Temporal Logic),
 - CTL\* (essentially a combination of LTL+CTL),
 
-I am not trying to give a survey of the entire field, and moreover I may not even be fluent enough to give a good survey of all the different logics and tools. I just wanted to introduce you to one example that is concrete enough to hold in our hands.
-
 -->
-
-<!-- ------------------------- reviewed upto here ------------------------- -->
 
 ## (Very Brief) Introduction to CTL
 
@@ -308,147 +254,6 @@ Because this is a distributed systems gathering, let's imagine a small consensus
 
 (TODO: talk a bit about 2PC and its (failing) verification.)
 
-<!-- We've already talked that there are alternatives, so let's not spend time on this:
-
-## Why stop at CTL?
-
-At this point I should explicitly say: CTL is not the entire world.
-
-There are other ways to formalize systems and properties.
-
-In some traditions (e.g. CSP), we don't specify properties as formulas in a logic,
-and instead, prepare a *specification model* that behaves as freely as possible within the constraints of the requirement,
-and then check whether the implementation model "only does what the specification model does" (or some variant of that idea).
-
-That is a very different style.
-
-Likewise, interactive theorem proving is different again.
-
-In a proof assistant, we do not merely run a checker over a finite-state transition system. 
-We might define:
-- a programming language,
-- an operational semantics,
-- a type system,
-- a protocol,
-- an invariant,
-- and then prove theorems about all of that in a general logical framework.
-
-That gives us tremendous expressive power, but it also comes with different costs.
-
-So I do not want this talk to leave the impression that CTL model checking is “the way” to verify distributed systems.
-It is just one very clear window into the broader landscape.
-
--->
-
-<!-- This intuition would be impossible to convey without a good amount of experience in theorem proving, so no.
-     The most important point is that unspecified means non-reasonable, and we've already mentioned that.
-
-## Specifications as things we invoke
-
-Now I want to return to the earlier philosophical point, but make it more practical.
-
-In dependently typed settings, there is a familiar idea that programs and proofs interact.
-
-There is a computational layer and a reasoning layer, and they meet in concrete ways.
-
-For instance, once you know some fact that rules out an impossible case, that fact can be used to justify an operation that would otherwise be unsafe.
-
-So from the point of view of downstream reasoning, a proved theorem behaves a lot like a library artifact:
-it is something available to be used.
-
-This is what I mean when I say that a specification, once formalized and established, can act like a library function.
-
-Not because it computes in the same way.
-But because downstream work may critically depend on it.
-
-If I build an application on top of a replicated log, and I need consistency properties of that log to justify the application’s correctness, then those properties are not decorative. 
-They are prerequisites for the reasoning I want to perform.
-
-So a specification is not merely something written at the beginning of a project. 
-It is also something that supports everything built afterward.
-
-This is why I connect specifications with responsibility.
-
-Without stable things to rely on, there can be no serious downstream justification.
-
--->
-
-<!-- We haven't discussed different approaches to verification in depth,
-     so we can't really foster a good intuition about the differences between them. So let's not do this.
-
-## Testing, model checking, theorem proving
-
-It is also worth comparing a few approaches very roughly.
-
-### Testing
-Testing asks:
-- does the implementation behave as expected on these examples or workloads?
-
-Testing is essential. 
-But testing never explores all possibilities.
-
-### Model checking
-Model checking asks:
-- given this abstract model and this formal property, does the property hold in the model?
-
-This can explore an entire finite or finitely represented state space and often yields counterexamples.
-
-### Theorem proving
-Theorem proving asks:
-- can we construct a formal proof, inside a logical framework, that some statement follows from definitions and assumptions?
-
-This is often more expressive, but also often more labor-intensive.
-
-None of these replaces the others completely.
-
-And none of them removes the burden of thinking.
-
-Even a perfect formal proof only proves what it actually states, from the assumptions it actually uses.
-
-So the important skill is not merely “use a powerful tool”.
-
-The important skill is:
-- understand what has been modeled,
-- understand what has been specified,
-- understand what has been proved or checked,
-- and understand what remains outside the formal envelope.
-
--->
-
-<!-- I don't think this is the right time to talk about this.
-
-## Current limitations of formal methods
-
-I want to be explicit here: we are not done.
-
-Current formal methods, as of 2026, are not the ultimate shape of software engineering.
-
-I do not know a toolchain that simultaneously gives us all of the following in one seamless package:
-
-- efficient low-level executable code in the style people expect from systems languages,
-- rich interaction with realistic hardware concerns,
-- sophisticated static reasoning about time or resource bounds,
-- expressive formal models of complicated software behavior,
-- and practical end-to-end proof workflows that ordinary teams can routinely adopt.
-
-We have many partial techniques:
-- static analyses and type systems,
-- model checkers,
-- proof assistants and proof-carrying code,
-- domain-specific verification tools,
-- and so on.
-
-These are remarkable achievements, but they do not (*yet!*) add up to “software engineering has been solved”.
-
-So again, I do not want the audience to come away thinking:
-“Ah, formal methods are the destination, and the only problem is that people have not adopted them enough.”
-
-No, the situation is more subtle.
-
-These methods are attempts to make some forms of justification precise and machine-checkable.
-
--->
-
 ## This *Might* Matter to You!
 
 Now let me make the larger claim. Even if you never use CTL, even if you never touch Lean or Rocq, even if you never write a model checker, I still think this matters.
@@ -482,29 +287,12 @@ If that sounds relevant to your work, then I think the study of mathematical log
 
 So let me summarize the real message of this talk.
 
-First:
-
-**A specification is not just a document.** 
-It is something that enables reliance and downstream reasoning.
-
-Second:
-
-**A model is not the real system.** 
-It is a mathematical stand-in, useful precisely because it is selective and abstract.
-
-Third:
-
-**Verification always happens relative to a model and assumptions.** 
-This is not a weakness unique to formal methods; it is the structure of the problem.
-
-Fourth:
-
-**CTL model checking is one concrete example** of how we can represent a system mathematically, write down requirements formally, and mechanically check whether they hold.
-
-And finally:
-
-**You do not have to adopt these tools tomorrow.** 
-But I do hope you leave with the ability to judge what they are trying to do, where they may matter, and how to recognize when they become relevant to your own work.
+1. **A specification is not just a document**: It is an expectation about the system, something that unlocks reliance and downstream reasoning.
+2. **A model is not the real system**: It is a mathematical stand-in, useful precisely because it is abstract.
+3. **Verification always happens relative to a model and assumptions**: This is not a weakness unique to formal methods; it is the structure of the problem.
+4. **CTL model checking is one concrete example** of how we can represent a system mathematically, write down requirements formally, and mechanically check whether they hold.
+5. **You do not have to adopt these tools tomorrow!** 
+   ...But I do hope you leave with the ability to judge what they are trying to do, where they may matter, and how to recognize when they become relevant to your own work.
 
 ---
 
