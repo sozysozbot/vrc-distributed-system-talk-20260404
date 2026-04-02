@@ -1,48 +1,53 @@
 # モデル検査入門 - 分散アルゴリズムの正当性について
-Initial draft talk script / outline  
-Language of this draft: English  
-Audience: a small distributed-systems meetup, likely including professional software engineers who are not necessarily trained in mathematical logic or formal methods
 
----
+Description: This is the initial draft script of the planned talk. I've fed all context I had in my mind to ChatGPT (through text + voice), made it write a draft following my rough plan and then heavily edited it to reach the current status.
+Language of this draft: English 
+Audience: a small distributed-systems meetup, likely including professional software engineers who may not necessarily be familar with mathematical logic or formal methods.
 
 ## Context and aims of the talk
 
-This talk is **not** primarily a sales pitch for formal methods tools, nor an attempt to convince the audience that they should immediately start using theorem provers or model checkers in their daily work.
+This talk is **not** designed to be a sales pitch for formal methods tools,
+nor an attempt to convince the audience that they should immediately start using
+theorem provers or model checkers in their daily work.
 
-The deeper aim is to give the audience a way to think about the following questions:
+The real aim is to give the audience a way to think about the following questions:
 
 - What is a **specification**, really?
-- In what sense can specifications be made precise enough that we can check systems against them?
+- In what sense can specifications be made precise enough that we can (algorithmically) check systems against them?
 - What is a **model** of a system, and how is it different from the real system?
 - What are formal methods actually trying to do, and what are they **not** able to do?
-- How should software engineers think about responsibility, correctness, and justification, especially in a future where AI systems increasingly generate code?
+- (slightly outside the scope of the talk, but): how should software engineers think about responsibility, correctness and justification, especially in a future where AI systems increasingly generate code?
 
 The intended message is roughly this:
 
-1. A specification is not merely a document passed around by a manager.  
+1. A specification is not merely a document passed around by a manager. 
    It is, more fundamentally, something that downstream people can **rely on** in order to reason about outcomes.
 
-2. Formal methods are one family of techniques for making some specifications precise enough to be mechanically checked.  
-   But the formalization is **not the same thing** as the real-world intent behind the specification.
+2. Formal methods are one family of techniques for making specifications precise enough to be mechanically checked. 
+   But the formalized specification **may** not be the same thing as the real-world intent behind the specification.
 
-3. Models are useful precisely because they are **not** reality.  
-   They live in a mathematical world, and we use them to predict and reason about reality. That gap is unavoidable and important.
+3. Models are useful precisely because they are **not** reality. 
+   They live in a mathematical world, and we use them to predict and reason about reality.
+   The gap is structurally unavoidable, but useful.
 
-4. Current formal methods are powerful but limited.  
-   They are not the final form of software engineering, and they do not solve everything. They carve out parts of reality that are structured enough to reason about.
+4. Current formal methods are powerful but are not silver bullets (as always). 
+   They are not the final form of software engineering, and they do not yet solve everything.
 
-5. Even so, this line of thinking matters, because software engineering is inseparable from responsibility.  
+5. Even so, this line of thinking matters, because software engineering is inseparable from responsibility and explainability.
    If outcomes are not specified in a form people can rely on, nontrivial downstream reasoning becomes impossible.
 
-6. In an era of AI-generated software, this may become even more relevant.  
-   The point is not that responsibility disappears; rather, we may increasingly need the ability to read and judge what has actually been verified, and what has not.
+<!-- We have absolutely no time this!
+
+6. In an era of AI-generated software, this may become even more relevant. 
+   The point is not that responsibility disappears; rather, we may increasingly need
+   the ability to read and judge what has actually been verified, and what has not.
+
+-->
 
 This draft is therefore trying to balance:
 - accessibility for a non-specialist technical audience,
 - one concrete technical example, namely CTL model checking,
 - and a broader philosophical / engineering message about responsible software development.
-
----
 
 ## Suggested framing at the very beginning
 
@@ -51,11 +56,12 @@ Before I start, let me tell you what kind of talk this is.
 This is partly a technical talk, but not only that. There are a few different things mixed together here.
 
 - If you are mainly interested in day-to-day software engineering, I want you to pay attention to the parts where I talk about **specifications**, **responsibility**, and what it means to justify the behavior of software.
-- If you are interested in the more mathematical side, then the part on **CTL** and **model checking** is probably where you should lean in.
+- If you are interested in the more technical side, then the part on **CTL** and **model checking** is probably where you should lean in. As new technical tools, you will learn about Kripke structures (a directed graph together with a valuation) and CTL formulas.
+<!-- no time for this:
 - If you are interested in the bigger picture, especially in relation to AI and future tooling, then I want you to listen for the question: **how should we think about software correctness when code generation becomes cheap?**
+-->
 
-Also, this talk is not trying to tell you that one particular tool is the answer.  
-I am not here to say “everybody should go use Lean”, or “everybody should go use TLA+”, or “CTL model checking is the right way to verify software”.
+Also, this talk is not trying to tell you that one particular tool is the answer. I am not here to say “everybody should go use Lean”, or “everybody should specify with TLA+”, or “CTL model checking is the right way to verify software”.
 
 Instead, what I want to do is give you a conceptual map:
 - what a specification is,
@@ -68,119 +74,115 @@ Instead, what I want to do is give you a conceptual map:
 
 # Talk draft
 
-## 1. Opening
+## Opening
 
 Today I want to talk about model checking, distributed algorithms, and correctness.
 
-But really, the question underneath all of this is simpler:
+But really, the question underneath all of this looks rather non-technical:
 
-**What does it mean to say that a system is correct?**
+**What does it mean to say that a system is correct?** And **what does it take you to say so?**
 
-And before that, an even more basic question:
+Before answering these questions, we should spend some time considering the following:
 
 **What is a specification?**
 
-If you work in software, the word “specification” probably already means something to you.  
-Maybe it means a requirements document. Maybe it means a design doc. Maybe it means a ticket. Maybe it means a message from a product manager.
+If you work in software, the word “specification” probably already means something to you. Maybe it means a requirements document. Maybe it means a design doc. Maybe it means a ticket. Maybe it means a message from a product manager.
 
-That is one use of the word, and it is a practical one.  
-But today I want to push us toward a different view.
+That is certainly one use of the word, and it is a practical one. But today I want to push us toward a rather different view. That is how we start the journey.
 
-I want to suggest that a specification is, in a deeper sense, something that allows somebody downstream to **reason** about the system.
+## Specs are "Constraints from Expectations"
 
-If a library says, “this function sorts a list”, that statement is not just documentation in the casual sense.  
-It is something I rely on when I write code on top of it.
+In Japanese, “仕様” might feel more like a general *outline* of what a system does. In English, however, "specification" has a connotation of "specifying", "pinpointing" and "normatively constraining" what the system should or *could* do.
 
-If a consensus system says, “two different committed values can never appear at the same log position”, that statement is not just a slogan.  
-It is something an application built on top of that system might fundamentally depend on.
+I would like to take this intuition further and even say that, for our purpose, the word *specification* stands for 「システムが何をしなければならないかを指定し、制約する期待」.
 
-So one way to think about a specification is this:
+A specification is not merely the PDF or the wiki page or the requirements document that your project manager passes onto you. Their *intended expectations* are the specifications, and the *documents* themselves are just the medium! For those documents to be useful at all, they must *specify* meaningfully what the system is supposed to do, and there lies what specifications are.
 
-> A specification is something we rely on in order to make further reasoning possible.
+So the first thing I want you to unlearn is the idea that “specification” just means a human-written document passed from one person to another.
 
-And that is why specifications matter.
+It is the *standard* which an implementation is *expected to* meet. "Expected", by whom, you might ask, and that's the appropriate question. I had to say "expected to", because it is typically stakeholders who are holding such expectation. (Footnote: a point to ponder: Combined with the next point I am going to make, I think that the phrase Specification-Driven Development is (very) misguiding. We *should have been* specifying stuff from the beginning. There could be multiple arguments for and against this opinion, even if you insisted the word Specification to mean a form of expectations, and it could be worthwhile to stand still for a moment and think: *what are we trying to do, really?*)
 
-Because if outcomes are not specified in a way that can be relied on, then downstream reasoning becomes impossible, or at least extremely fragile.
+## Specs as Things We (Software Engineers) Rely On
 
----
+From the point of view of stakeholders, specifications are expectations that constrain implementations.
 
-## 2. A specification is not merely a document
+Now, if you are a software engineer, you *might* be thinking: "OK, but I am not a stakeholder. I am the implementer. Why should *I* care about specifications? They are just boring standards to which I have to comply". That is a very honest and good question! My answer is, well, you *are* a stakeholder!
 
-At this point, I want to make a distinction.
+Imagine yourself writing a function (TODO: write a concrete function name here). You were most probably forced to writing that function because a "past you" had some expectation about what the function should do. Maybe you had an idea of how it should be used, or maybe you had a vague notion of what it should accomplish. That expectation can be considered a specification, and if you do not fulfill it, then you have failed to meet your own expectations.
 
-A specification is not merely the PDF or the wiki page or the requirements document.  
-Those are media through which a specification may be communicated.
+Shortly before the period of actually writing the function, you have been a stakeholder of the function. *More importantly*, *after* you have written the function, you *still are* (and likely will remain to be) a stakeholder of the function, because you will almost certainly use it yourself (if not, why have you written it?). (footnote: Recursive functions are interesting because they force you to be a user of the function specification *while writing the body of the function*. I've written about this on Twitter a while ago: https://x.com/Kory__3/status/1785847683238023279)
 
-The deeper thing is the content that tells us what we are allowed to assume.
+When you are about to use the function, you *expect* it to do something useful for you, and to be certain that your function is the right thing to use, you need to assume that the function meets its specification, and that that specification is the property you really need at that moment.
 
-And that content can be vague, informal, partially formalized, or fully formalized.
+In fact, *every single time* you use or invoke any form of existing code, you are relying on some specification. If a library says, “this function sorts a list”, you use that function because you expect it to sort a list. If a consensus algorithm says, “no two different values can appear as an answer to a query asking for the value”, that statement is not just a slogan. It is something an application built on top of that algorithm will likely fundamentally depend on.
 
-So the first thing I want the audience to unlearn is the idea that “specification” just means a human-written document passed from one person to another.
+So a yet another way to think about a specification is this:
 
-That document may be useful.  
-But from the point of view of reasoning, the interesting question is:
+> A specification is a statement about behaviour (of a system or a module) that we rely on in order to make downstream reasoning possible.
 
-**What exactly does it entitle me to conclude?**
+If a particular behaviour of a function is left *unspecified*, *morally*, you *cannot* assume that the function works the way you wished it to. *There is nobody to whom you can shift the blame*. If the function says it returns a permutation of the input list in a non-decreasing order, but does not mention what happens if two elements don't compare, you cannot assume stability (if two non-comparing elements will come out in the same order as they went in) of the sorting function.
 
-That is where formal methods enter the picture.
+And that is why specifications matter. If outcomes are not specified in a way that can be relied on, then downstream reasoning becomes impossible, or at least extremely fragile. (footnote: closely related to this topic is the notion of "contract")
 
-Not because formal methods are the ultimate goal.  
-And not because every important specification can be fully formalized.
+## Formal Specifications
 
-But because they show, very clearly, that there are situations in which we can make parts of a specification precise enough that a machine can check whether some model satisfies it.
+Specifications can often be *informal*, and this brings about two notable issues:
+- they may not be objective, in the sense that different people *may* have different interpretations of what the specification actually means (footnote: by *meaning of a specification*, I mean a boolean predicate that takes in an implementation and returns whether the implementation meets the specification),
+- and we cannot mechanically check whether an implementation meets the specification.
 
-That is already a profound shift.
+The first problem creates a burden for both the user and the implementor of a system, and the latter problem reduces the confidence of the user that the implementation actually does what it is advertising it should do.
 
-It means that specification is not only a social artifact.  
-It can also become an object of mathematical manipulation.
+This is where formal methods enter the picture.
 
----
+Formal specifications are specifications that are written in *formal languages*, and they are *much easier* to handle algorithmically compared to specifications in natural languages. Eliminating ambiguity in natural languages is generally difficult, but we *can design* formal languages so that every statement has a precise meaning.
 
-## 3. Before “model checking”, what is a model?
+Note that I am not saying that *every* specification can be formalized. In fact, I believe that many real-world specifications are very difficult to formalize (e.g. how would you formally specify that your game character doesn't clip into the wall with a given world asset? Just saying "the character doesn't clip into the wall" is a lot easier than defining what that really means, precisely because the natural language description is sweeping all the complexity under the rug (i.e. people's "common sense")).
+
+There are however specifications that can be written down with formal languages, and I will focus on those parts.
+
+The *model checking*, today's main topic, is one family of techniques for checking
+whether a formal specification holds in a formal model of the system.
+
+## Before “model checking”, what is a model?
 
 Before I say “model checking”, I need to pause on the word **model**.
 
-Because I do not mean “model” in the model-theory sense, where a model satisfies a logical theory.  
-What I mean here is more practical.
-
 A model is a simplified stand-in for a real system.
+In this talk I will roughly use the word “model” to mean a
+*piece of data that we prepare in order to represent some aspect of a real system*.
 
-A familiar analogy is a map.
+A good analogy would be a *map*.
 
-A map is not the terrain.  
-A subway map is not the city.  
-It does not contain every wall, every smell, every crack in the road, every moving object, every human intention.
+A map is *not* the terrain. It does not contain every wall, every building,
+every crack in the road, every moving object. It just *represents* the Earth's surface by displaying the structure of the terrain.
 
-But that is exactly why it is useful.
+That is exactly why it is useful. It deliberately throws away detail in order to
+ - let you focus on the things that matter for navigation, and to
+ - fit the map onto a piece of paper.
 
-It deliberately throws away detail in order to preserve some structure that matters for a purpose.
+A model **abstracts** *and hence* **simplifies** the reality.
 
-And that is the first thing a model does: it **simplifies**.
+A map is just a piece of paper with lines and symbols on it.
+Actually, we can even say that the map being drawn on a piece of paper is unimportant,
+and outright say that a map is a combination of carefully placed lines and symbols.
+With this view, a map is *just a piece of data*.
+Therefore, we can put this piece of data into a computer, and then we can write algorithms that operate on it.
+Route planning on Google Maps is a prominent example of that.
 
-But there is a second point, and to me it is even more important:
+<!-- ↓ This explanation is probably confusing, so let's not do this
 
-A model does not merely simplify reality.  
-It also **disconnects** us from reality.
+But there is a second point, and to me it is even more important: A model does not merely simplify reality. It also **disconnects** us from reality.
 
-Once we have written down a Kripke structure or a labeled transition system, we are no longer directly talking about the real cluster, the real machines, the real network cards, the actual timing behavior of the hardware, or the actual users.
+We are now in a mathematical world, and we are just relating, by our discretion, a mathematical object to the real system.
 
-We are now in a mathematical world.
+Side note: by *mathematical*, you might think of "things where you need mathematical expressions to write them down", but
+that is *not* what I intend to say! Conveying this idea in its entirety would require a whole additional talk,
+but the point is that things we deal with are *just data* (in principle), and we are trying to represent some physically existing things
+with that data. (TODO: I don't want the word to sound authoritarian! The important aspects are that these mathematical objects are
+precise, objective (in the sense that *you can't possibly disagree about what the object is* (as long as definitions are communicated))
+and that we can argue *absolutely* (non-refutably) about them. We are deboning every "real" aspect of the system in question, often involving radical simplifications, and what we are then left with is what we are calling as a "mathematical model". It is one slice of the "most boring" and "least difficult" parts of the system, and our ability to reason about them in precise ways comes from this boringness.)
 
-And when we prove something about the mathematical object, that fact does not automatically jump back into reality by magic.
-
-What we get is not direct certainty about the real system.  
-What we get is a reasoned prediction:
-
-- if this real system is adequately represented by this model,
-- and if the property we wrote down adequately captures the requirement we care about,
-- and if our checking procedure is sound,
-
-then we gain confidence that the real system has the relevant property.
-
-That gap is not a bug in formal methods.  
-It is the entire situation.
-
-And this matters especially whenever the system has a strong physical aspect:
+This matters especially whenever the system has a strong physical aspect:
 - elevator safety systems,
 - traffic signals,
 - robotics,
@@ -191,260 +193,138 @@ In such settings, careless modeling can be disastrous.
 
 So one of the most important lessons I want to communicate is:
 
-> Verification is always verification of a model, under assumptions.
+> Formal verification is always verification of a model, which brings along loads of assumptions about the reality.
 
-And therefore one must never confuse:
-- the real-world requirement,
-- the formal property,
+One must not confuse:
+- the *real* requirement, which may only be present in the minds of stakeholders,
+- the formal mathematical property, which is *an encoding* of requirements onto a formal language,
 - the real implementation,
 - and the mathematical model of that implementation.
 
-These are related, but they are not identical.
+These are closely related, but they are all different things.
 
----
+-->
 
-## 4. So what are formal methods trying to do?
+## OK, so What do Formal Methods do?
 
-At this point, I can say what I think formal methods are trying to do.
+At this point, I can say what formal methods are:
 
-They are not trying to capture all of reality at once.
+You *model* real systems as mathematical models, such as directed graphs. Then, you prove (either by computation or by deduction) some *formal* property, which you *think* corresponds to a property of the real system, of the model. Once you establish that the model satisfies the formal property, you conclude that the real system likely satisfies the desired property.
 
-They are not trying to replace engineering judgment.
+<!-- NOTE: This script is heavily skewed towards model checking and in a sense is not a fair description of formal methods, because the term "formal methods" typically just points to an area where mathematically rigorous arguments are applied in design and analysis of software. However, we *could* argue that logic-based analysis of software (such as type systems or Hoare/separation logic) are yet another form of model checking, because programs are themselves mathematical models of "physical on-chip realization of software" (https://x.com/Kory__3/status/2037186072405524544). For a less radical treatment of the word, see https://www.cs.ox.ac.uk/people/michael.wooldridge/teaching/soft-eng/lect06.pdf for example. -->
 
-And they are not trying to eliminate all ambiguity from all software development.
+Instead of establishing that *the system* is correct (which could be, in many ways, extremely challenging), we model the system as a formal object that we think *represents* the system and then establish a property *about the model* through some (typically machine-assisted) procedure.
 
-What they do, in many cases, is carve out a part of the world that is structured enough to be reasoned about mechanically.
+When we prove something about the mathematical object, that fact does not automatically jump back into reality. What we get is not direct certainty about the real system. What we get is a *prediction* about the real system, based on a few assumptions:
 
-That is both their power and their limitation.
+- if this real system is adequately represented by this model,
+- and if the property we wrote down adequately captures the requirement we care about,
+- and if our checking procedure is sound,
 
-For example:
-- type systems check certain classes of invariants statically,
-- model checking explores state spaces of abstract machines,
-- theorem provers let us encode definitions and proofs in a precise logical framework.
+then we gain confidence that the real system has the relevant property.
 
-These are all different ways of making some claim precise enough that it becomes checkable.
+<!-- ↓ I'll keep these in mind but they add unnecessary burden to the audience, so we skip this part. However, I should probably mention that there are formal methods which are not particularly tied to checking mathematical models (like type systems and ITPs).
 
-But none of them is “the final answer”.
+To name a few examples of the formal methods:
+- model checking checks that a model of system (e.g. Kripke frame or transition system) conform to a formal specification (e.g. logical formula)
+- refinement checking checks that "implementation" models do not "do anything more mischievous than" "specification" models that do whatever  spec-conforming models would do
+- a type system checks that terms conform to types. Terms and types can be thought of as abstractions of implementations and properties (cf. Curry-Howard Correspondence)
+- (and more...)
 
-In fact, I think it is important not to let people come away from this talk with the belief that formalization is the goal in itself.
+These are all different attempts at making assertions *formal enough* so that they become machine-checkable.
 
-It is not.
+In the context of software engineering and systems design,
+I would say that the ultimate goal is to *reason* about software and systems.
 
-Formalization is a technique.  
-A powerful one, sometimes beautiful, often useful, but still a technique.
+-->
 
-The goal is responsible reasoning about software and systems.
+## One concrete path: Kripke structures + Temporal Logic
 
----
+Now I want to get more concrete and technical.
 
-## 5. One concrete path: temporal logic and model checking
-
-Now I want to get more concrete.
-
-Suppose I have a system with states and transitions:
-- maybe a distributed protocol,
+Suppose I have a system with states:
+- maybe a trafic light system in a crossing,
 - maybe a lock implementation,
 - maybe a transaction protocol,
-- maybe a toy consensus model.
+- maybe a consensus system.
 
 Then one way to describe that system mathematically is as a transition structure:
-a graph of states, where edges represent possible next steps.
+a graph of states, where edges represent possible next steps, together with a *valuation* describing the area at which a given (atomic) property holds. These are (for historical reasons) called *Kripke structures*.
 
-And one family of logics for specifying properties of such systems is **temporal logic**.
+We now know what the model should be, and we need a formal language to describe properties of Kripke structures. One family of logics we can use to describe their properties is **temporal logic**.
 
-The idea of temporal logic is that we do not just say what is true in a single state.  
-We also talk about what must hold:
-- in the next state,
-- along some future path,
-- on all possible futures,
-- eventually,
-- forever.
+The idea of temporal logic is that we do not just say what is true in a single state, but we also talk about what must hold in the next "tick", or in the future. There are a few variants of temporal logic, but one concrete example we talk about today is **CTL**, the Computation Tree Logic.
 
-And one concrete example is **CTL**, Computation Tree Logic.
+<!-- ↓ Justifications for choocing CTL. No need to say this unless asked.
 
-I am choosing CTL today not because it is the one true logic for distributed systems, but because it is a reasonably accessible example of what it looks like to specify properties over a branching state space and check them algorithmically.
+I am choosing CTL today not because it is the best tool for distributed systems (I suppose it is *not*!), but because it is a reasonably accessible example of what it looks like to specify properties over a state space and check them algorithmically.
 
-There are alternatives:
-- LTL,
-- CTL\*,
-- process-algebraic approaches such as CSP,
-- theorem-proving approaches in proof assistants such as Lean or Rocq,
-- and many others.
+To name a few other temporal logics, there are:
+- LTL (Linear Temporal Logic),
+- CTL\* (essentially a combination of LTL+CTL),
 
-I am not trying to give a survey of the entire field.  
-I just want one example that is concrete enough to hold in our hands.
+I am not trying to give a survey of the entire field, and moreover I may not even be fluent enough to give a good survey of all the different logics and tools. I just wanted to introduce you to one example that is concrete enough to hold in our hands.
 
----
+-->
 
-## 6. Very brief intuition for CTL
+<!-- ------------------------- reviewed upto here ------------------------- -->
+
+## (Very Brief) Introduction to CTL
 
 In CTL, formulas are built from:
 - ordinary propositions about a state,
-- boolean connectives such as “and” and “not”,
-- and temporal operators that combine path quantification and time.
+- boolean connectives such as ∧ (“and”) and ¬ (“not”),
+- and *temporal operators*.
 
-For example, very informally:
+Temporal operators talk about "future transitions" in the model. The main important ones are: 
 
-- **AX φ**: in all immediate next states, φ holds
-- **EX φ**: there exists an immediate next state in which φ holds
-- **AF φ**: along all paths, eventually φ holds
-- **EF φ**: there exists some path along which eventually φ holds
-- **AG φ**: along all paths, φ always holds
-- **EG φ**: there exists some path along which φ always holds
+- ∃〇 φ (read as "there exists a next state where φ holds")
+- ∃□ φ (read as "there exists a path where φ will always hold")
+- ∃U(φ, ψ) (read as "there exists a path where ψ holds at some point, and φ keeps holding until then")
 
-You can already hear the kinds of questions this lets us ask:
+(TODO: Put some concrete examples here. I think crossing traffic light system is a good example, because the transition system is small enough to be drawn.)
 
-- Is it possible to get stuck in a bad state?
-- Is safety preserved forever?
-- Is recovery possible from here?
-- Must a request eventually be served?
-- Can a deadlock occur on some execution?
+## What is model checking?
 
-That is the flavor.
-
----
-
-## 7. What is model checking?
-
-Given:
+Let's do a small recap. The Kripke Structure + CTL setup was this: given
 1. a model of the system, such as a Kripke structure,
 2. and a formula, such as a CTL formula,
 
-the model-checking problem is:
+the problem we need to solve is
 
-> Does this model satisfy this formula?
+> does this model satisfy this formula?
 
-That is a very elegant setup, because it cleanly separates two things:
-- the mathematical structure representing behavior,
-- and the mathematical statement representing the requirement.
-
-Then the checking procedure is a mechanical algorithm.
-
-And one thing I like about CTL as a teaching example is that the checker can be implemented in a very small amount of code.
-
+One thing I like about CTL as a teaching example is that the (naive) checker can be implemented in a very small amount of code.
 At least at the toy level, the core ideas fit in a compact recursive evaluator plus a few graph algorithms.
-
-So this is not just abstract philosophy.  
 It is something you can actually implement in a small prototype and inspect line by line.
 
-That makes it pedagogically valuable.
+## CTL Model Checker
 
----
+(TODO: Talk about the fix-point treatment of ∃□ and ∃U. This should be easy once we prepare enough graph-manipulation primitives.)
 
-## 8. A distributed-systems-flavored example
+## A distributed-systems-flavored example
 
-Because this is a distributed systems gathering, I do not want the example to be only traffic lights and toy locks.
+Because this is a distributed systems gathering, let's imagine a small consensus-like system.
 
-I would like us to at least imagine a small consensus-like system.
+(TODO: talk a bit about 2PC and its (failing) verification.)
 
-Not necessarily full industrial Raft with every practical detail.  
-That would be too much for this talk.
+<!-- We've already talked that there are alternatives, so let's not spend time on this:
 
-But a simplified transition system that resembles part of the behavior of a consensus cluster:
-- nodes may be followers, candidates, or leaders,
-- elections may occur,
-- logs may be replicated,
-- some entries may be committed,
-- messages may be delayed or lost in the model,
-- and some failure patterns may be represented.
-
-A state might record things like:
-- each node’s role,
-- current term,
-- portions of the log,
-- who the leader is, if any,
-- and which entries are considered committed.
-
-A transition might represent:
-- a timeout,
-- a vote,
-- a leader election,
-- an append-entries step,
-- a commit step,
-- maybe a failure or message loss event, depending on the abstraction.
-
-This already gives us a branching transition system.
-
-And then we can ask safety questions.
-
-For example, here is the kind of property we might want:
-
-> There are never two distinct leaders in the same term.
-
-Or:
-
-> Once an entry is committed at a given log index, no different value can ever become committed at that same index.
-
-Or more loosely:
-
-> If some value is committed, then all future committed views remain consistent with it.
-
-I am being intentionally informal at this moment, because the exact formalization depends on how we encode states and propositions.  
-But this is the general shape.
-
-And one useful thing here is that we do not need a complete industrial-grade model to learn something.
-
-Even a deliberately naive protocol, or a simplified protocol with a known flaw, can be a good teaching tool:
-because then a failed property check gives us a counterexample trace.
-
-And counterexamples are one of the most educational outputs a model checker can produce.
-
-They show not merely that “something is wrong”, but how a bad state can arise.
-
----
-
-## 9. Safety and liveness
-
-This is also a good moment to distinguish two broad kinds of properties:
-**safety** and **liveness**.
-
-Safety is the idea that “something bad never happens”.
-
-For example:
-- two leaders do not exist simultaneously in some forbidden way,
-- two committed values do not conflict,
-- mutual exclusion is never violated.
-
-Liveness is the idea that “something good eventually happens”.
-
-For example:
-- eventually a leader is elected,
-- eventually a request gets committed,
-- eventually a transaction completes.
-
-In real distributed systems, liveness is often much trickier than safety, because failures and fairness assumptions matter enormously.
-
-And that is actually pedagogically helpful.
-
-Because it lets us say something honest:
-
-Even a very good protocol may have liveness properties that do **not** hold under arbitrary failures.
-
-That is not necessarily a bug.  
-It may be a consequence of the model and the environment assumptions.
-
-So a model checker finding that some liveness statement fails is not always embarrassing.  
-Sometimes it is exactly the intended result.
-
-Again, this is a good lesson:
-what is true depends on the model and the assumptions.
-
----
-
-## 10. Why not stop at CTL?
+## Why stop at CTL?
 
 At this point I should explicitly say: CTL is not the entire world.
 
 There are other ways to formalize systems and properties.
 
-For example, in some traditions we do not primarily write a temporal formula and ask whether a model satisfies it.  
-Instead, we compare one process description against another, or reason about observational equivalence, refinement, simulation, bisimulation, and so on.
+In some traditions (e.g. CSP), we don't specify properties as formulas in a logic,
+and instead, prepare a *specification model* that behaves as freely as possible within the constraints of the requirement,
+and then check whether the implementation model "only does what the specification model does" (or some variant of that idea).
 
 That is a very different style.
 
 Likewise, interactive theorem proving is different again.
 
-In a proof assistant, we do not merely run a checker over a finite-state transition system.  
+In a proof assistant, we do not merely run a checker over a finite-state transition system. 
 We might define:
 - a programming language,
 - an operational semantics,
@@ -453,17 +333,17 @@ We might define:
 - an invariant,
 - and then prove theorems about all of that in a general logical framework.
 
-That gives us tremendous expressive power.
-
-But it also comes with different costs.
+That gives us tremendous expressive power, but it also comes with different costs.
 
 So I do not want this talk to leave the impression that CTL model checking is “the way” to verify distributed systems.
-
 It is just one very clear window into the broader landscape.
 
----
+-->
 
-## 11. Specifications as things we invoke
+<!-- This intuition would be impossible to convey without a good amount of experience in theorem proving, so no.
+     The most important point is that unspecified means non-reasonable, and we've already mentioned that.
+
+## Specifications as things we invoke
 
 Now I want to return to the earlier philosophical point, but make it more practical.
 
@@ -481,19 +361,22 @@ This is what I mean when I say that a specification, once formalized and establi
 Not because it computes in the same way.
 But because downstream work may critically depend on it.
 
-If I build an application on top of a replicated log, and I need consistency properties of that log to justify the application’s correctness, then those properties are not decorative.  
+If I build an application on top of a replicated log, and I need consistency properties of that log to justify the application’s correctness, then those properties are not decorative. 
 They are prerequisites for the reasoning I want to perform.
 
-So a specification is not merely something written at the beginning of a project.  
+So a specification is not merely something written at the beginning of a project. 
 It is also something that supports everything built afterward.
 
 This is why I connect specifications with responsibility.
 
 Without stable things to rely on, there can be no serious downstream justification.
 
----
+-->
 
-## 12. Testing, model checking, theorem proving
+<!-- We haven't discussed different approaches to verification in depth,
+     so we can't really foster a good intuition about the differences between them. So let's not do this.
+
+## Testing, model checking, theorem proving
 
 It is also worth comparing a few approaches very roughly.
 
@@ -501,7 +384,7 @@ It is also worth comparing a few approaches very roughly.
 Testing asks:
 - does the implementation behave as expected on these examples or workloads?
 
-Testing is essential.  
+Testing is essential. 
 But testing never explores all possibilities.
 
 ### Model checking
@@ -530,9 +413,11 @@ The important skill is:
 - understand what has been proved or checked,
 - and understand what remains outside the formal envelope.
 
----
+-->
 
-## 13. Current limitations of formal methods
+<!-- I don't think this is the right time to talk about this.
+
+## Current limitations of formal methods
 
 I want to be explicit here: we are not done.
 
@@ -540,235 +425,100 @@ Current formal methods, as of 2026, are not the ultimate shape of software engin
 
 I do not know a toolchain that simultaneously gives us all of the following in one seamless package:
 
-- extremely efficient low-level executable code in the style people expect from systems languages,
+- efficient low-level executable code in the style people expect from systems languages,
 - rich interaction with realistic hardware concerns,
 - sophisticated static reasoning about time or resource bounds,
 - expressive formal models of complicated software behavior,
 - and practical end-to-end proof workflows that ordinary teams can routinely adopt.
 
 We have many partial techniques:
-- type systems,
-- lightweight static analyses,
+- static analyses and type systems,
 - model checkers,
-- proof assistants,
+- proof assistants and proof-carrying code,
 - domain-specific verification tools,
-- proof-carrying code ideas,
-- certified compilation in some niches,
 - and so on.
 
-These are remarkable achievements.  
-But they do not add up to “the whole problem has been solved”.
+These are remarkable achievements, but they do not (*yet!*) add up to “software engineering has been solved”.
 
 So again, I do not want the audience to come away thinking:
 “Ah, formal methods are the destination, and the only problem is that people have not adopted them enough.”
 
-No.
-
-The situation is more subtle.
+No, the situation is more subtle.
 
 These methods are attempts to make some forms of justification precise and machine-checkable.
 
-That is already valuable, even if incomplete.
+-->
 
----
+## This *Might* Matter to You!
 
-## 14. Why this still matters, especially now
+Now let me make the larger claim. Even if you never use CTL, even if you never touch Lean or Rocq, even if you never write a model checker, I still think this matters.
 
-Now let me make the larger claim.
-
-Even if you never use CTL.  
-Even if you never touch Lean or Rocq.  
-Even if you never write a model checker.
-
-I still think this matters.
-
-Why?
-
-Because software engineering is not only about making things run.  
-It is also about being able to answer questions like:
+Why? Because software engineering is not only about making things run. It is also about being able to answer questions like:
 
 - What does this system guarantee?
 - Under what assumptions?
 - Why do we believe that?
-- What exactly was checked?
-- What exactly remains unchecked?
+- What was checked?
+- What remains unchecked?
 
-And those questions become more important, not less important, when code becomes cheap to generate.
+My claim is this: those questions become more important, not less important, when code becomes cheap with generative AIs. Accordingly, *the ability to take responsibility* will be more scarce compared to the amount of code, and software engineering as a discipline *may* steer toward taking *more* responsibility reliably, at scale.
 
-We are entering an era in which generative AI can increasingly produce implementations very quickly.
-
-I am not making the claim that AI solves verification.  
-And I am not saying that responsibility goes away.
-
-On the contrary.
-
-My point is that if software generation becomes cheaper, then the value of being able to interpret, assess, and justify software behavior may become even more visible.
-
-Perhaps proof exploration will become cheaper too.  
-Perhaps formal artifacts will become easier to generate.  
-Perhaps not perfectly, perhaps not reliably, perhaps not soon enough for many use cases.
-
-But even in that world, the central human question remains:
+Perhaps proof exploration will become cheaper too. Perhaps formal artifacts will become easier to generate. Perhaps not perfectly, perhaps not reliably, perhaps not soon enough for many use cases. But even in that world, the central question remains:
 
 > What has actually been shown, and why should I trust that interpretation?
 
-Unless you are doing research specifically about how proofs are found, most of the time what you care about is not the romance of proof search itself.  
-What you care about is whether some claim has actually been established.
+Unless you are doing research specifically about how to prove things (IMO mathematicians are more likely to be in that category), most of the time you only care whether some claim has actually been established.
 
-And to use such technology responsibly, you need at least the ability to read off:
+I believe that, to use such technology responsibly, you need the ability to read off:
 - what the formal statement says,
 - what it does not say,
 - and why someone is entitled to rely on it.
 
-If that sounds relevant to your future, then I think the study of logic and formal methods is worth your attention.
+If that sounds relevant to your work, then I think the study of mathematical logic and formal methods is worth your attention.
 
 ---
 
-## 15. What I want you to take away
+## What I want you to take away
 
 So let me summarize the real message of this talk.
 
 First:
 
-**A specification is not just a document.**  
+**A specification is not just a document.** 
 It is something that enables reliance and downstream reasoning.
 
 Second:
 
-**A model is not the real system.**  
+**A model is not the real system.** 
 It is a mathematical stand-in, useful precisely because it is selective and abstract.
 
 Third:
 
-**Verification always happens relative to a model and assumptions.**  
+**Verification always happens relative to a model and assumptions.** 
 This is not a weakness unique to formal methods; it is the structure of the problem.
 
 Fourth:
 
 **CTL model checking is one concrete example** of how we can represent a system mathematically, write down requirements formally, and mechanically check whether they hold.
 
-Fifth:
-
-**Formal methods are neither magic nor pointless.**  
-They are limited, but they reveal something deep about what it means to justify software behavior.
-
 And finally:
 
-**You do not have to adopt these tools tomorrow.**  
+**You do not have to adopt these tools tomorrow.** 
 But I do hope you leave with the ability to judge what they are trying to do, where they may matter, and how to recognize when they become relevant to your own work.
 
 ---
 
-## 16. Optional closing
+## Closing
 
-If I have done this talk well, then even if you never become a formal methods person, I hope at least one thing has shifted.
+If I have done this talk well, then even if you never become a formal methods person, I hope at least one thing has shifted. I hope the next time someone says “specification”, you do not hear only “document”. I hope you also hear:
 
-I hope the next time someone says “specification”, you do not hear only “document”.
-
-I hope you also hear:
-
+- something that constrains implementations,
 - something to rely on,
-- something that constrains reasoning,
 - something that can sometimes be formalized,
 - something that may support responsibility,
 - and something whose precision determines what kinds of claims can responsibly be made.
 
-And if that shift happens, I think this talk will have succeeded.
-
----
-
-# Appendix: optional slide-level structure
-
-## Slide 1
-Title  
-モデル検査入門 - 分散アルゴリズムの正当性について
-
-## Slide 2
-What kind of talk this is  
-- practical engineering angle
-- technical logic angle
-- future / AI angle
-
-## Slide 3
-Main question  
-What is a specification?
-
-## Slide 4
-Specification is not merely a document  
-- downstream reasoning
-- reliance
-- guarantees
-
-## Slide 5
-Before model checking: what is a model?  
-- map analogy
-- simplification
-- disconnection from reality
-
-## Slide 6
-Verification is about a model under assumptions  
-- not magic
-- not direct transfer to reality
-
-## Slide 7
-What formal methods try to do  
-- carve out a tractable slice
-- make claims checkable
-
-## Slide 8
-Temporal logic idea  
-- properties over time / branching futures
-
-## Slide 9
-CTL in one slide  
-- AX, EX, AF, EF, AG, EG
-
-## Slide 10
-What is model checking?  
-model + formula -> does the property hold?
-
-## Slide 11
-Distributed example  
-- simplified consensus / Raft-like state machine
-
-## Slide 12
-Safety vs liveness  
-- safety: bad things never happen
-- liveness: good things eventually happen
-
-## Slide 13
-Counterexamples are useful  
-- not only failure, but explanation
-
-## Slide 14
-Other approaches  
-- LTL / CTL*
-- CSP / process comparison
-- theorem proving
-
-## Slide 15
-Specifications as usable artifacts  
-- theorem/spec as something downstream reasoning depends on
-
-## Slide 16
-Testing vs model checking vs theorem proving
-
-## Slide 17
-Limitations of current tools  
-- not the final answer
-- not end-to-end for everything
-
-## Slide 18
-Why this matters in the AI era  
-- code generation gets cheaper
-- interpretation and justification still matter
-
-## Slide 19
-Takeaways
-
-## Slide 20
-Closing question  
-What are you actually relying on when you say a system is correct?
+And if that shift happens, I think this talk has succeeded.
 
 ---
 
