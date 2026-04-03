@@ -5,6 +5,11 @@
  * **satisfaction set** for every subformula: the set of states where
  * that subformula holds.
  *
+ * The transition relation is **totalized** before model checking:
+ * deadlock states (states with no successors) receive a self-loop.
+ * This is the standard treatment for CTL path semantics, ensuring
+ * that every state has at least one infinite path from it.
+ *
  * The algorithm follows the standard fixpoint characterization of CTL:
  *   EF φ   = μZ. φ ∨ EX Z
  *   AF φ   = μZ. φ ∨ AX Z
@@ -16,29 +21,43 @@
 
 import type { KripkeStructureJson } from "./kripke";
 import type { CTLFormula } from "./ctl";
-import { allSubformulae } from "./ctl";
+import { formulaChildren } from "./ctl";
 
 // ---------------------------------------------------------------------------
 // Precomputed transition structure
 // ---------------------------------------------------------------------------
 
 /**
- * Represents the transition relation of a Kripke structure in both
- * forward (successors) and backward (predecessors) adjacency-list form.
+ * Represents a totalized transition relation in both forward (successors)
+ * and backward (predecessors) adjacency-list form.
+ *
+ * Invariant: every state has at least one successor (deadlocks are
+ * totalized with a self-loop).
  */
 interface TransitionIndex {
-  /** successors[s] = set of states reachable from s. */
+  /** successors[s] = set of states reachable from s. Non-empty for all s. */
   readonly successors: ReadonlyArray<ReadonlySet<number>>;
   /** predecessors[t] = set of states that have an edge to t. */
   readonly predecessors: ReadonlyArray<ReadonlySet<number>>;
 }
 
+/**
+ * Builds adjacency lists from the Kripke structure's transition relation,
+ * adding a self-loop to any deadlock state (state with no successors).
+ */
 function buildTransitionIndex(ks: KripkeStructureJson): TransitionIndex {
   const successors: Set<number>[] = Array.from({ length: ks.nodeCount }, () => new Set());
   const predecessors: Set<number>[] = Array.from({ length: ks.nodeCount }, () => new Set());
   for (const [s, t] of ks.transitions) {
     successors[s].add(t);
     predecessors[t].add(s);
+  }
+  // Totalize: deadlock states get a self-loop
+  for (let s = 0; s < ks.nodeCount; s++) {
+    if (successors[s].size === 0) {
+      successors[s].add(s);
+      predecessors[s].add(s);
+    }
   }
   return { successors, predecessors };
 }
@@ -67,9 +86,9 @@ function intersect(a: ReadonlySet<number>, b: ReadonlySet<number>): Set<number> 
   return r;
 }
 
-function complement(all: number, a: ReadonlySet<number>): Set<number> {
+function complement(n: number, a: ReadonlySet<number>): Set<number> {
   const r = new Set<number>();
-  for (let i = 0; i < all; i++) {
+  for (let i = 0; i < n; i++) {
     if (!a.has(i)) r.add(i);
   }
   return r;
@@ -98,18 +117,17 @@ function computeEX(sat: ReadonlySet<number>, idx: TransitionIndex): Set<number> 
   return result;
 }
 
-/** AX φ: states where all successors are in `sat`. States with no successors vacuously satisfy AX. */
+/**
+ * AX φ: states where all successors are in `sat`.
+ *
+ * Precondition: the transition relation is total (every state has ≥1 successor),
+ * so AX is never vacuously true.
+ */
 function computeAX(sat: ReadonlySet<number>, idx: TransitionIndex, n: number): Set<number> {
   const result = new Set<number>();
   for (let s = 0; s < n; s++) {
-    const succs = idx.successors[s];
-    if (succs.size === 0) {
-      // No successors: AX holds vacuously
-      result.add(s);
-      continue;
-    }
     let allIn = true;
-    for (const t of succs) {
+    for (const t of idx.successors[s]) {
       if (!sat.has(t)) { allIn = false; break; }
     }
     if (allIn) result.add(s);
@@ -167,6 +185,11 @@ export function checkCTL(
 
   function eval_(f: CTLFormula): ReadonlySet<number> {
     if (result.has(f)) return result.get(f)!;
+
+    // Recursively evaluate children first
+    for (const child of formulaChildren(f)) {
+      eval_(child);
+    }
 
     let sat: ReadonlySet<number>;
 
@@ -236,10 +259,6 @@ export function checkCTL(
     return sat;
   }
 
-  // Evaluate bottom-up by visiting all subformulae
-  for (const sub of allSubformulae(formula)) {
-    eval_(sub);
-  }
-
+  eval_(formula);
   return result;
 }

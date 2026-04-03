@@ -7,7 +7,7 @@ import {
   type KripkeStructureVisualizationParamsJson,
   parseKripkeStructureVisualizationJson,
 } from "../types/kripke";
-import { type CTLFormula, parseCTL, formulaToString } from "../types/ctl";
+import { type CTLFormula, parseCTL, formulaToDisplayString } from "../types/ctl";
 import { checkCTL } from "../types/ctlModelChecker";
 import { FormulaVisualizer } from "../components/FormulaVisualizer";
 import { createOutline, type IRectangle, type ILine } from "bubblesets-js";
@@ -437,7 +437,7 @@ function FormulaPanel({
       <div style={{ fontSize: 18, color: "#aaa", height: 24, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", flexShrink: 0 }}>
         {hoveredFormula && hoveredSat != null ? (
           <>
-            <span style={{ color: "#7ec8e3" }}>{formulaToString(hoveredFormula)}</span>
+            <span style={{ color: "#7ec8e3" }}>{formulaToDisplayString(hoveredFormula)}</span>
             {" "}satisfied at {hoveredSat.size} of {viz.kripkeStructure.nodeCount} state{viz.kripkeStructure.nodeCount !== 1 ? "s" : ""}
           </>
         ) : formula && satMap ? (() => {
@@ -508,6 +508,11 @@ export function CTLModelCheckerTab() {
     return { formula: result, formulaError: null };
   }, [formulaText]);
 
+  // Clear hoveredFormula when the formula tree is replaced
+  useEffect(() => {
+    setHoveredFormula(null);
+  }, [formula]);
+
   // Model check
   const satMap = useMemo(() => {
     if (!formula) return null;
@@ -517,7 +522,7 @@ export function CTLModelCheckerTab() {
   // Compute bubble set path for hovered subformula
   const [bubblePath, setBubblePath] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refreshBubblePath = useCallback(() => {
     const cy = cyRef.current;
     if (!cy || !hoveredFormula || !satMap) {
       setBubblePath(null);
@@ -530,9 +535,14 @@ export function CTLModelCheckerTab() {
     }
     const path = computeBubbleSetPath(cy, sat, viz.kripkeStructure.nodeCount, viz.kripkeStructure.transitions);
     setBubblePath(path);
-  }, [hoveredFormula, satMap, viz.kripkeStructure.nodeCount]);
+  }, [hoveredFormula, satMap, viz.kripkeStructure.nodeCount, viz.kripkeStructure.transitions]);
 
-  // Sync SVG overlay size and viewport with Cytoscape
+  // Recompute bubble path when hover or data changes
+  useEffect(() => {
+    refreshBubblePath();
+  }, [refreshBubblePath]);
+
+  // Sync SVG overlay size with container
   const updateSvgOverlay = useCallback(() => {
     const svg = svgRef.current;
     const container = graphContainerRef.current;
@@ -548,6 +558,12 @@ export function CTLModelCheckerTab() {
     observer.observe(container);
     return () => observer.disconnect();
   }, [updateSvgOverlay]);
+
+  // Refs to avoid stale closures in Cytoscape event handlers
+  const refreshBubblePathRef = useRef(refreshBubblePath);
+  useEffect(() => { refreshBubblePathRef.current = refreshBubblePath; }, [refreshBubblePath]);
+
+  const hoveredNodeRef = useRef<cytoscape.NodeSingular | null>(null);
 
   const scheduleHide = useCallback(() => {
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -567,19 +583,40 @@ export function CTLModelCheckerTab() {
       cyRef.current = cy;
 
       cy.on("mouseover", "node", (e) => {
-        cancelHide();
         const node = e.target as cytoscape.NodeSingular;
+        hoveredNodeRef.current = node;
+        cancelHide();
         const pos = node.renderedPosition();
         setTooltip({ stateIndex: node.data("stateIndex") as number, x: pos.x, y: pos.y });
       });
-      cy.on("mouseout", "node", scheduleHide);
-
-      // Update bubble set on viewport changes
-      cy.on("pan zoom resize", updateSvgOverlay);
+      cy.on("mouseout", "node", () => {
+        hoveredNodeRef.current = null;
+        scheduleHide();
+      });
     },
-    [cancelHide, scheduleHide, updateSvgOverlay],
+    [cancelHide, scheduleHide],
   );
 
+  // Separate effect for viewport change listener — reads from refs
+  // so it always calls the latest refreshBubblePath and updates tooltip position.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const handleViewportChange = () => {
+      updateSvgOverlay();
+      refreshBubblePathRef.current();
+      const node = hoveredNodeRef.current;
+      if (node) {
+        const pos = node.renderedPosition();
+        setTooltip({ stateIndex: node.data("stateIndex") as number, x: pos.x, y: pos.y });
+      }
+    };
+    cy.on("pan zoom resize layoutstop", handleViewportChange);
+    return () => { cy.off("pan zoom resize layoutstop", handleViewportChange); };
+  }, [updateSvgOverlay]);
+
+  // Imperatively reapply stylesheet when selection or data changes,
+  // since CytoscapeComponent only applies the declarative stylesheet on mount.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;

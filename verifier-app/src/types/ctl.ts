@@ -35,33 +35,42 @@ export type CTLFormula =
 // ---------------------------------------------------------------------------
 
 /** Returns a Unicode string representation of a CTL formula. */
-export function formulaToString(f: CTLFormula): string {
+export function formulaToDisplayString(f: CTLFormula): string {
   switch (f.tag) {
     case "true": return "⊤";
     case "false": return "⊥";
     case "atom": return f.name;
-    case "not": return `¬${wrapIfCompound(f.sub)}`;
-    case "and": return `${wrapIfCompound(f.left)} ∧ ${wrapIfCompound(f.right)}`;
-    case "or": return `${wrapIfCompound(f.left)} ∨ ${wrapIfCompound(f.right)}`;
-    case "implies": return `${wrapIfCompound(f.left)} → ${wrapIfCompound(f.right)}`;
-    case "AX": return `∀○ ${wrapIfCompound(f.sub)}`;
-    case "EX": return `∃○ ${wrapIfCompound(f.sub)}`;
-    case "AF": return `∀♢ ${wrapIfCompound(f.sub)}`;
-    case "EF": return `∃♢ ${wrapIfCompound(f.sub)}`;
-    case "AG": return `∀□ ${wrapIfCompound(f.sub)}`;
-    case "EG": return `∃□ ${wrapIfCompound(f.sub)}`;
-    case "AU": return `∀U(${formulaToString(f.left)}, ${formulaToString(f.right)})`;
-    case "EU": return `∃U(${formulaToString(f.left)}, ${formulaToString(f.right)})`;
+    case "not": return `¬${wrapIfBinaryConnective(f.sub)}`;
+    case "and": return `${wrapIfBinaryConnective(f.left)} ∧ ${wrapIfBinaryConnective(f.right)}`;
+    case "or": return `${wrapIfBinaryConnective(f.left)} ∨ ${wrapIfBinaryConnective(f.right)}`;
+    case "implies": return `${wrapIfBinaryConnective(f.left)} → ${wrapIfBinaryConnective(f.right)}`;
+    case "AX": return `∀○ ${wrapIfBinaryConnective(f.sub)}`;
+    case "EX": return `∃○ ${wrapIfBinaryConnective(f.sub)}`;
+    case "AF": return `∀♢ ${wrapIfBinaryConnective(f.sub)}`;
+    case "EF": return `∃♢ ${wrapIfBinaryConnective(f.sub)}`;
+    case "AG": return `∀□ ${wrapIfBinaryConnective(f.sub)}`;
+    case "EG": return `∃□ ${wrapIfBinaryConnective(f.sub)}`;
+    case "AU": return `∀U(${formulaToDisplayString(f.left)}, ${formulaToDisplayString(f.right)})`;
+    case "EU": return `∃U(${formulaToDisplayString(f.left)}, ${formulaToDisplayString(f.right)})`;
   }
 }
 
-function wrapIfCompound(f: CTLFormula): string {
-  const s = formulaToString(f);
-  return isCompound(f) ? `(${s})` : s;
+/**
+ * Returns true when `f` is a binary connective (and, or, implies)
+ * and thus requires parenthesization when appearing as a child.
+ */
+function isBinaryConnective(f: CTLFormula): boolean {
+  return f.tag === "and" || f.tag === "or" || f.tag === "implies";
 }
 
-function isCompound(f: CTLFormula): boolean {
-  return f.tag === "and" || f.tag === "or" || f.tag === "implies";
+/**
+ * Wraps the display string in parentheses if `f` is a binary connective,
+ * ensuring that the output is always faithful to the AST structure
+ * (e.g. `p → (q → r)` and `(p → q) → r` are distinguished).
+ */
+function wrapIfBinaryConnective(f: CTLFormula): string {
+  const s = formulaToDisplayString(f);
+  return isBinaryConnective(f) ? `(${s})` : s;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,23 +123,6 @@ export function formulaChildren(f: CTLFormula): CTLFormula[] {
   }
 }
 
-/**
- * Collects all subformulae of `f` (including `f` itself) in a
- * depth-first, pre-order traversal. Each subformula appears by
- * reference identity, so the result can be used as keys in a Map.
- */
-export function allSubformulae(f: CTLFormula): CTLFormula[] {
-  const result: CTLFormula[] = [];
-  const visit = (node: CTLFormula) => {
-    result.push(node);
-    for (const child of formulaChildren(node)) {
-      visit(child);
-    }
-  };
-  visit(f);
-  return result;
-}
-
 // ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
@@ -138,10 +130,14 @@ export function allSubformulae(f: CTLFormula): CTLFormula[] {
 /**
  * Token types produced by the lexer.
  *
- * - `ident`: atomic proposition names, keywords (true/false), and
- *   temporal operator names (AX, EX, AF, EF, AG, EG, AU, EU)
+ * - `ident`: atomic proposition names and keywords
+ *   (true, false, AX, EX, AF, EF, AG, EG).
+ *   Any identifier-shaped string that is not a keyword is an atom name.
  * - `op`: multi-character operators (&&, ||, ->, A[, E[)
- * - `punct`: single-character punctuation (!, (, ), [, ], U when inside brackets)
+ * - `punct`: single-character punctuation (!, (, ), ])
+ *
+ * Note: `U` is lexed as a normal identifier. The parser consumes it
+ * as a keyword only inside `A[...U...]` / `E[...U...]` brackets.
  */
 interface Token {
   readonly type: "ident" | "op" | "punct";
@@ -149,8 +145,7 @@ interface Token {
   readonly pos: number;
 }
 
-const KEYWORDS = new Set([
-  "true", "false",
+const UNARY_TEMPORAL_OPERATORS = new Set([
   "AX", "EX", "AF", "EF", "AG", "EG",
 ]);
 
@@ -187,15 +182,6 @@ function tokenize(input: string): Token[] | string {
     // Single-character punctuation
     if ("!()],".includes(input[i])) {
       tokens.push({ type: "punct", value: input[i], pos });
-      i++;
-      continue;
-    }
-
-    // 'U' as a punctuation when used as until separator
-    if (input[i] === "U" && (i + 1 >= input.length || !/[a-zA-Z0-9_]/.test(input[i + 1]))) {
-      // Check if this looks like the 'U' in A[...U...] by checking if we're inside brackets
-      // We'll treat standalone 'U' as punctuation; the parser disambiguates
-      tokens.push({ type: "punct", value: "U", pos });
       i++;
       continue;
     }
@@ -304,7 +290,7 @@ export function parseCTL(input: string): CTLFormula | string {
     }
 
     // Temporal operators (unary: AX, EX, AF, EF, AG, EG)
-    if (t.type === "ident" && KEYWORDS.has(t.value) && t.value !== "true" && t.value !== "false") {
+    if (t.type === "ident" && UNARY_TEMPORAL_OPERATORS.has(t.value)) {
       const op = advance().value as "AX" | "EX" | "AF" | "EF" | "AG" | "EG";
       const sub = parseUnary();
       if (typeof sub === "string") return sub;
@@ -312,12 +298,17 @@ export function parseCTL(input: string): CTLFormula | string {
     }
 
     // Until operators: A[φ U ψ] and E[φ U ψ]
+    // The 'U' separator is consumed as an ident here, not as global punctuation,
+    // so 'U' remains a valid atomic proposition name outside brackets.
     if (t.type === "op" && (t.value === "A[" || t.value === "E[")) {
       const kind = advance().value === "A[" ? "AU" : "EU";
       const left = parseImpl();
       if (typeof left === "string") return left;
-      const u = expect("punct", "U");
-      if (typeof u === "string") return u;
+      const u = peek();
+      if (!u || u.type !== "ident" || u.value !== "U") {
+        return `Expected 'U' at position ${u?.pos ?? input.length}, got '${u?.value ?? "end of input"}'`;
+      }
+      advance();
       const right = parseImpl();
       if (typeof right === "string") return right;
       const close = expect("punct", "]");
