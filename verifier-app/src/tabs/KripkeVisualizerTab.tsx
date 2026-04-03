@@ -152,6 +152,7 @@ function buildStylesheet(
     "text-valign": "center",
     "text-halign": "center",
     color: "#fff",
+    "font-family": "Martian Mono, monospace",
     "font-size": "12px",
     width: 40,
     height: 40,
@@ -205,97 +206,58 @@ function buildStylesheet(
 }
 
 // ---------------------------------------------------------------------------
-// Tooltip (DOM-based, no innerHTML to avoid XSS from user-provided JSON)
+// Tooltip state
 // ---------------------------------------------------------------------------
 
-/**
- * Attaches a hover tooltip to Cytoscape nodes. Returns a cleanup function
- * that removes the DOM element and unregisters all event handlers.
- */
-function setupTooltip(
-  cy: cytoscape.Core,
-  getFrame: () => KripkeStructureJson,
-): () => void {
-  const tooltipEl = document.createElement("div");
-  Object.assign(tooltipEl.style, {
-    position: "absolute",
-    background: "#333",
-    color: "#fff",
-    padding: "6px 10px",
-    borderRadius: "4px",
-    fontSize: "12px",
-    pointerEvents: "auto",
-    zIndex: "1000",
-    display: "none",
-    maxHeight: "180px",
-    overflowY: "auto",
-    lineHeight: "1.6",
-  });
-  cy.container()?.appendChild(tooltipEl);
+interface TooltipState {
+  readonly stateIndex: number;
+  readonly x: number;
+  readonly y: number;
+}
 
-  let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+function NodeTooltip({
+  tooltip,
+  frame,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  tooltip: TooltipState;
+  frame: KripkeStructureJson;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const trueProps = propositionsAt(frame, tooltip.stateIndex);
+  const allProps = Object.keys(frame.valuation).sort();
 
-  const handleMouseOver = (e: cytoscape.EventObject) => {
-    const node = e.target as cytoscape.NodeSingular;
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
-    }
-
-    const frame = getFrame();
-    const stateIndex = node.data("stateIndex") as number;
-    const trueProps = propositionsAt(frame, stateIndex);
-    const allProps = Object.keys(frame.valuation).sort();
-
-    // Build tooltip content safely via DOM (no innerHTML)
-    tooltipEl.replaceChildren();
-    if (allProps.length === 0) {
-      tooltipEl.textContent = "(no propositions)";
-    } else {
-      for (const prop of allProps) {
-        const line = document.createElement("div");
-        line.textContent = `${trueProps.has(prop) ? "✅" : "❌"} ${prop}`;
-        tooltipEl.appendChild(line);
-      }
-    }
-
-    tooltipEl.style.display = "block";
-    const pos = node.renderedPosition();
-    tooltipEl.style.left = `${pos.x + 25}px`;
-    tooltipEl.style.top = `${pos.y - 10}px`;
-  };
-
-  const scheduleHide = () => {
-    if (hideTimeout) clearTimeout(hideTimeout);
-    hideTimeout = setTimeout(() => {
-      tooltipEl.style.display = "none";
-    }, 100);
-  };
-
-  const handleMouseOut = () => scheduleHide();
-
-  const handleTooltipEnter = () => {
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
-    }
-  };
-
-  const handleTooltipLeave = () => scheduleHide();
-
-  cy.on("mouseover", "node", handleMouseOver);
-  cy.on("mouseout", "node", handleMouseOut);
-  tooltipEl.addEventListener("mouseenter", handleTooltipEnter);
-  tooltipEl.addEventListener("mouseleave", handleTooltipLeave);
-
-  return () => {
-    if (hideTimeout) clearTimeout(hideTimeout);
-    cy.off("mouseover", "node", handleMouseOver);
-    cy.off("mouseout", "node", handleMouseOut);
-    tooltipEl.removeEventListener("mouseenter", handleTooltipEnter);
-    tooltipEl.removeEventListener("mouseleave", handleTooltipLeave);
-    tooltipEl.remove();
-  };
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        position: "absolute",
+        left: tooltip.x + 25,
+        top: tooltip.y - 10,
+        background: "#333",
+        color: "#fff",
+        padding: "6px 10px",
+        borderRadius: 4,
+        fontSize: 12,
+        pointerEvents: "auto",
+        zIndex: 1000,
+        maxHeight: 180,
+        overflowY: "auto",
+        lineHeight: "1.6",
+      }}
+    >
+      {allProps.length === 0
+        ? "(no propositions)"
+        : allProps.map((prop) => (
+            <div key={prop}>
+              {trueProps.has(prop) ? "\u2705" : "\u274c"} {prop}
+            </div>
+          ))}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -373,20 +335,40 @@ export function KripkeVisualizerTab() {
   const [viz, setViz] = useState<KripkeStructureVisualizationJson>(SAMPLE_JSON);
   const [error, setError] = useState<string | null>(null);
   const [selectedProps, setSelectedProps] = useState<Set<string>>(new Set());
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const tooltipCleanupRef = useRef<(() => void) | null>(null);
-  const vizRef = useRef(viz);
-  vizRef.current = viz;
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const propositions = useMemo(() => resolvePropositionColors(viz), [viz]);
 
+  const scheduleHide = useCallback(() => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    hideTimeoutRef.current = setTimeout(() => setTooltip(null), 100);
+  }, []);
+
+  const cancelHide = useCallback(() => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  }, []);
+
   const handleCy = useCallback((cy: cytoscape.Core) => {
     if (cyRef.current === cy) return;
-    // Clean up previous tooltip if any
-    tooltipCleanupRef.current?.();
     cyRef.current = cy;
-    tooltipCleanupRef.current = setupTooltip(cy, () => vizRef.current.frame);
-  }, []);
+
+    cy.on("mouseover", "node", (e) => {
+      cancelHide();
+      const node = e.target as cytoscape.NodeSingular;
+      const pos = node.renderedPosition();
+      setTooltip({
+        stateIndex: node.data("stateIndex") as number,
+        x: pos.x,
+        y: pos.y,
+      });
+    });
+    cy.on("mouseout", "node", scheduleHide);
+  }, [cancelHide, scheduleHide]);
 
   // Apply pie-chart stylesheet whenever selection or data changes
   useEffect(() => {
@@ -432,13 +414,15 @@ export function KripkeVisualizerTab() {
     <div
       style={{
         display: "flex",
+        width: "100%",
         height: "100%",
         gap: 8,
         padding: 8,
+        overflow: "hidden",
       }}
     >
       {/* Input panel */}
-      <div style={{ width: 230, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         <textarea
           value={jsonText}
           onChange={(e) => setJsonText(e.target.value)}
@@ -486,9 +470,9 @@ export function KripkeVisualizerTab() {
       <div
         style={{
           flex: 1,
+          minWidth: 0,
           border: "1px solid #ccc",
           borderRadius: 4,
-          minHeight: 300,
           position: "relative",
         }}
       >
@@ -504,6 +488,14 @@ export function KripkeVisualizerTab() {
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
           cy={handleCy}
         />
+        {tooltip && (
+          <NodeTooltip
+            tooltip={tooltip}
+            frame={viz.frame}
+            onMouseEnter={cancelHide}
+            onMouseLeave={scheduleHide}
+          />
+        )}
       </div>
     </div>
   );
