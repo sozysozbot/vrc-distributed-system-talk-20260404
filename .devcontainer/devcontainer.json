@@ -1,0 +1,42 @@
+{
+  "name": "分散システム集会#24 準備用",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "Anthropic.claude-code",
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "files.insertFinalNewline": true,
+        "files.trimFinalNewlines": true,
+        "files.trimTrailingWhitespace": true,
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "mounts": [
+    "source=elan-toolchains-${devcontainerId},target=/home/vscode/.elan,type=volume",
+    "source=uv-cache-${devcontainerId},target=/home/vscode/.cache/uv,type=volume",
+    "source=uv-local-${devcontainerId},target=/home/vscode/.local,type=volume",
+    "source=codexconfig-${devcontainerId},target=/home/vscode/.codex,type=volume",
+    "source=claudeconfig-${devcontainerId},target=/home/vscode/.claude,type=volume",
+    "source=commandhistory-${devcontainerId},target=/commandhistory,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+  // Hack: In Windows, every mounted file gets root:root ownership, so overwrite it to vscode:vscode.
+  //       Also, convert all text files to Unix line endings.
+  "onCreateCommand": "sudo chown -R $(id -u):$(id -g) /workspace && git ls-files -z | sudo xargs -0 dos2unix && git add -A",
+  "postCreateCommand": "chmod +x /workspace/.devcontainer/post-create.sh && /workspace/.devcontainer/post-create.sh"
+}
