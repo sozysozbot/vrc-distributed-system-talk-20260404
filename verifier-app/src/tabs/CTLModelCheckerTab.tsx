@@ -66,8 +66,8 @@ const SAMPLE_JSON: KripkeStructureVisualizationJson = {
 // Cytoscape helpers
 // ---------------------------------------------------------------------------
 
-const AUTO_LAYOUT: cytoscape.LayoutOptions = { name: "cose", animate: false };
-const PRESET_LAYOUT: cytoscape.LayoutOptions = { name: "preset", animate: false };
+const AUTO_LAYOUT = { name: "fcose" as const, animate: false };
+const PRESET_LAYOUT = { name: "preset" as const, animate: false };
 
 function chooseLayout(
   params?: KripkeStructureVisualizationParamsJson,
@@ -86,9 +86,9 @@ function kripkeToElements(
     { length: kripkeStructure.nodeCount },
     (_, i) => ({
       data: { id: String(i), label: String(i), stateIndex: i },
-      ...(nodePositions
-        ? { position: { x: nodePositions[i][0], y: -nodePositions[i][1] } }
-        : {}),
+      position: nodePositions
+        ? { x: nodePositions[i][0], y: -nodePositions[i][1] }
+        : { x: Math.random() * 1000, y: Math.random() * 1000 },
     }),
   );
 
@@ -621,6 +621,10 @@ export function CTLModelCheckerTab() {
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   const propositions = useMemo(() => resolvePropositionColors(viz), [viz]);
+  const elements = useMemo(
+    () => kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions),
+    [viz],
+  );
 
   // Parse formula
   const { formula, formulaError } = useMemo(() => {
@@ -741,6 +745,12 @@ export function CTLModelCheckerTab() {
   // since CytoscapeComponent only applies the declarative stylesheet on mount.
   useEffect(() => {
     const cy = cyRef.current;
+    if (!cy || viz.visualizationParams?.nodePositions) return;
+    cy.layout(AUTO_LAYOUT).run();
+  }, [viz]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
     if (!cy) return;
     const sheet = buildStylesheet(viz.kripkeStructure, propositions, selectedProps);
     cy.style(sheet as cytoscape.StylesheetCSS[]);
@@ -851,7 +861,7 @@ export function CTLModelCheckerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions)}
+          elements={elements}
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
