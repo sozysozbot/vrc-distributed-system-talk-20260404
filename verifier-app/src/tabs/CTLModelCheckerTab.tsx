@@ -11,6 +11,7 @@ import { type CTLFormula, parseCTL, formulaToDisplayString } from "../types/ctl"
 import { checkCTL } from "../types/ctlModelChecker";
 import { FormulaVisualizer } from "../components/FormulaVisualizer";
 import { createOutline, type IRectangle, type ILine } from "bubblesets-js";
+import katex from "katex";
 
 // ---------------------------------------------------------------------------
 // Color assignment
@@ -368,7 +369,116 @@ function computeBubbleSetPath(
 }
 
 // ---------------------------------------------------------------------------
-// Floating formula panel
+// Formula Syntax modal
+// ---------------------------------------------------------------------------
+
+function Tex({ children }: { children: string }) {
+  const html = useMemo(
+    () => katex.renderToString(children, { throwOnError: false, displayMode: false }),
+    [children],
+  );
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function FormulaSyntaxModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 10000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#2a2a32",
+          border: "1px solid #555",
+          borderRadius: 10,
+          padding: 28,
+          maxWidth: 740,
+          maxHeight: "80vh",
+          overflowY: "auto",
+          color: "#eee",
+          fontSize: 15,
+          lineHeight: 1.7,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontWeight: 700, fontSize: 20 }}>CTL Formula Syntax</span>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#aaa",
+              fontSize: 22,
+              cursor: "pointer",
+              padding: "0 4px",
+            }}
+          >
+            &times;
+          </button>
+        </div>
+
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid #555" }}>
+              <th style={{ textAlign: "left", padding: "6px 8px", color: "#aaa" }}>Syntax</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", color: "#aaa" }}>Symbol</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", color: "#aaa" }}>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            {([
+              { syntax: "true / false", symbol: "\\top \\;/\\; \\bot", meaning: "always true / always false" },
+              { syntax: "p, q, ...", symbol: null, meaning: "atomic propositions (named labels on states)" },
+              { syntax: "!<fml>", symbol: "\\neg\\varphi", meaning: "\"not\" — true when the inner formula is false" },
+              { syntax: "<fml> && <fml>", symbol: "\\varphi \\wedge \\psi", meaning: "\"and\" — true when both sides hold" },
+              { syntax: "<fml> || <fml>", symbol: "\\varphi \\vee \\psi", meaning: "\"or\" — true when at least one side holds" },
+              { syntax: "<fml> -> <fml>", symbol: "\\varphi \\to \\psi", meaning: "\"implies\" — false only when the left side is true but the right side is false" },
+              { syntax: "AX <fml>", symbol: "\\forall\\vcenter{\\LARGE\\circ}\\;\\varphi", meaning: "the inner formula holds at every next state" },
+              { syntax: "EX <fml>", symbol: "\\exists\\vcenter{\\LARGE\\circ}\\;\\varphi", meaning: "the inner formula holds at some next state" },
+              { syntax: "AF <fml>", symbol: "\\forall\\Diamond\\;\\varphi", meaning: "no matter which path we take, the inner formula will become true eventually" },
+              { syntax: "EF <fml>", symbol: "\\exists\\Diamond\\;\\varphi", meaning: "there is a path along which the inner formula becomes true eventually" },
+              { syntax: "AG <fml>", symbol: "\\forall\\Box\\;\\varphi", meaning: "the inner formula stays true forever, no matter which path we take" },
+              { syntax: "EG <fml>", symbol: "\\exists\\Box\\;\\varphi", meaning: "there is a path along which the inner formula stays true forever" },
+              { syntax: "A[ <fml> U <fml> ]", symbol: "\\forall\\mathsf{U}(\\varphi,\\,\\psi)", meaning: "on every path, the right formula becomes true at some point and until then the left formula keeps holding" },
+              { syntax: "E[ <fml> U <fml> ]", symbol: "\\exists\\mathsf{U}(\\varphi,\\,\\psi)", meaning: "on some path, the right formula becomes true at some point and until then the left formula keeps holding" },
+              { syntax: "( <fml> )", symbol: null, meaning: "group a subformula (controls evaluation order)" },
+            ] as const).map(({ syntax, symbol, meaning }) => (
+              <tr key={syntax} style={{ borderBottom: "1px solid #3a3a42" }}>
+                <td style={{ padding: "5px 8px", fontFamily: "Martian Mono, monospace", fontSize: 14, whiteSpace: "nowrap" }}>{syntax}</td>
+                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{symbol && <Tex>{symbol}</Tex>}</td>
+                <td style={{ padding: "5px 8px" }}>{meaning}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{ color: "#aaa", fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4, color: "#ccc" }}>Precedence (high to low)</div>
+          <div>! &gt; AX EX AF EF AG EG &gt; &amp;&amp; &gt; || &gt; -&gt;</div>
+          <div style={{ marginTop: 10, fontWeight: 600, marginBottom: 4, color: "#ccc" }}>Examples</div>
+          <div style={{ fontFamily: "Martian Mono, monospace", fontSize: 13 }}>
+            <div>AG (init -&gt; EX busy)</div>
+            <div>E[ light1_red U light1_green ]</div>
+            <div>!EF (light1_green &amp;&amp; light2_green)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Formula panel (floating overlay on the graph)
 // ---------------------------------------------------------------------------
 
 function FormulaPanel({
@@ -390,6 +500,7 @@ function FormulaPanel({
   onFormulaTextChange: (text: string) => void;
   onHover: (f: CTLFormula | null) => void;
 }) {
+  const [showSyntax, setShowSyntax] = useState(false);
   const hoveredSat = hoveredFormula && satMap?.get(hoveredFormula);
 
   return (
@@ -471,9 +582,19 @@ function FormulaPanel({
           minHeight: 60,
         }}
       />
+      <div style={{ textAlign: "right", marginTop: -10, lineHeight: 1 }}>
+        <a
+          href="#"
+          onClick={(e) => { e.preventDefault(); setShowSyntax(true); }}
+          style={{ color: "#7ec8e3", fontSize: 13, textDecoration: "none" }}
+        >
+          Formula Syntax
+        </a>
+      </div>
       {formulaError && (
         <div style={{ color: "#f88", fontSize: 18 }}>{formulaError}</div>
       )}
+      {showSyntax && <FormulaSyntaxModal onClose={() => setShowSyntax(false)} />}
     </div>
   );
 }
@@ -734,6 +855,7 @@ export function CTLModelCheckerTab() {
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
+          wheelSensitivity={3}
           cy={handleCy}
         />
 

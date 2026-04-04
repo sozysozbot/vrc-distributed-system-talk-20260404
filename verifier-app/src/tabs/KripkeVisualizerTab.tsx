@@ -508,6 +508,7 @@ export function KripkeVisualizerTab() {
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
+          wheelSensitivity={3}
           cy={handleCy}
         />
         {tooltip && (

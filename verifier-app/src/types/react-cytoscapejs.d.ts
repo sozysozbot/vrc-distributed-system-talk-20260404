@@ -8,6 +8,7 @@ declare module "react-cytoscapejs" {
     layout?: cytoscape.LayoutOptions;
     stylesheet?: cytoscape.Stylesheet[];
     cy?: (cy: cytoscape.Core) => void;
+    wheelSensitivity?: number;
   }
 
   export default class CytoscapeComponent extends Component<CytoscapeComponentProps> {}
